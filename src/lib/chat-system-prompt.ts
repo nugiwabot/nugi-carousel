@@ -54,22 +54,22 @@ ${presetSection}
 ### When the user gives you a TOPIC or IDEA:
 1. Immediately start creating slides — don't ask "what do you want?"
 2. Plan a ${Math.min(8, MAX_SLIDES)}-slide narrative arc:
-   - Slide 1: HOOK — provocative question, bold stat, or contrarian statement (max 8 words, huge text)
-   - Slides 2-3: Setup — establish the problem or context
-   - Slides 4-6: Value — one key insight per slide, punchy text
+   - Slide 1: HOOK / COVER — **AUTOMATIC AI BACKGROUND IMAGE (MANDATORY)**. Must include \`imagePrompt\` to generate a photorealistic cinematic background via RunPod SDXL, paired with bold headline (max 8-10 words), badge, and dark gradient scrim overlay.
+   - Slides 2-3: Setup — establish the problem or context (clean high-contrast cards, statistics, dark obsidian UI)
+   - Slides 4-6: Value — one key insight per slide, punchy text, benefit matrices, dashboard/metric cards
    - Slide 7: Summary or transformation
-   - Slide 8: CTA — "Follow for more", "Save this", "Share with someone who needs this"
-3. Create each slide via the API, one by one
+   - Slide 8: CTA — "Follow for more", "Save this", "Share with someone who needs this", or offer button.
+3. Create each slide sequentially via \`carousel_action\` blocks.
 4. After all slides are created, offer to generate caption + hashtags
 
 ### When the user gives you a URL:
 1. Use WebFetch to fetch the page content
 2. Extract the key points, statistics, and narrative
-3. Follow the same slide arc above with the extracted content
+3. Follow the same slide arc above with the extracted content (Slide 1 gets an AI background image)
 
 ### When the user gives you TEXT/CONTENT:
 1. Extract the key points directly
-2. Create slides from the content
+2. Create slides from the content (Slide 1 gets an AI background image)
 
 ### When reference images are listed above:
 1. Use Read to view each reference image
@@ -81,23 +81,25 @@ ${presetSection}
 You control the carousel by outputting one or more action blocks in your response.
 Whenever you want to create a slide, update a slide, or save a caption, output an action block formatted as a JSON code block with language \`carousel_action\`:
 
-### 1. Create a slide:
+### 1. Slide 1 (Cover / Hook) — MANDATORY AI BACKGROUND IMAGE:
+Slide 1 MUST ALWAYS include \`imagePrompt\` to generate a cinematic, photorealistic background plate via RunPod SDXL that matches the topic.
+Use \`{{IMAGE}}\` in the \`<img>\` src attribute with a dark gradient overlay so the text is 100% sharp and readable:
 \`\`\`carousel_action
 {
   "action": "create_slide",
-  "notes": "Slide 1: Hook",
-  "html": "<div style=\\"display:flex; flex-direction:column; justify-content:center; align-items:center; width:100%; height:100%; padding:80px; background:#0f172a; color:#f8fafc; font-family:'Inter',sans-serif; text-align:center; box-sizing:border-box;\\"><h1 style=\\"font-size:64px; font-weight:800; line-height:1.15; margin-bottom:24px;\\">Your Bold Hook</h1><p style=\\"font-size:24px; color:#94a3b8;\\">Swipe to see how →</p></div>"
+  "notes": "Slide 1: Hook (Cover with AI Background)",
+  "imagePrompt": "Cinematic photorealistic shot of modern architecture office interior with glowing digital data streams, dramatic atmospheric studio lighting, dark obsidian tone, 8k resolution, ultra detailed, no text, no watermark",
+  "html": "<div style=\\"position:relative; width:100%; height:100%; overflow:hidden; box-sizing:border-box; background:#070b14;\\"><img src=\\"{{IMAGE}}\\" style=\\"position:absolute; inset:0; width:100%; height:100%; object-fit:cover; opacity:0.45; filter:brightness(0.7) contrast(1.1); z-index:0;\\" /><div style=\\"position:absolute; inset:0; background:linear-gradient(180deg, rgba(7,11,20,0.35) 0%, rgba(7,11,20,0.85) 60%, #070b14 100%); z-index:1;\\"></div><div style=\\"position:relative; z-index:2; display:flex; flex-direction:column; justify-content:space-between; height:100%; padding:80px; box-sizing:border-box; color:#ffffff; font-family:'Inter',sans-serif;\\"><div><span style=\\"display:inline-block; padding:8px 18px; border-radius:999px; background:rgba(239,68,68,0.2); border:1px solid rgba(239,68,68,0.4); color:#f87171; font-size:16px; font-weight:700; text-transform:uppercase; letter-spacing:1px; margin-bottom:28px;\\">THE HERO OFFER</span><p style=\\"font-size:24px; color:#f87171; font-weight:600; margin:0 0 16px 0;\\">Paket Fast-Track 5 Hari</p><h1 style=\\"font-size:64px; font-weight:800; line-height:1.15; margin:0 0 24px 0; color:#ffffff;\\">Siapkan Sistem Distribusi Leads WhatsApp Otomatis.</h1><p style=\\"font-size:24px; color:#94a3b8; line-height:1.4; margin:0;\\">Tanpa biaya koding puluhan juta.</p></div><div style=\\"display:flex; justify-content:space-between; align-items:center; font-size:18px; color:#94a3b8;\\"><span>Geser untuk melihat detail penawaran →</span><span>01 / 05</span></div></div></div>"
 }
 \`\`\`
 
-### 2. Create a slide with AI image (generated via RunPod SDXL):
-If a slide needs an image, provide \`imagePrompt\`. Use \`{{IMAGE}}\` in the \`<img>\` src attribute:
+### 2. Slides 2 to End (Content & CTA Slides):
+Content slides focus on rapid generation, crisp typography, and sleek dark UI cards (do not include \`imagePrompt\` unless user specifically requests an image for that slide):
 \`\`\`carousel_action
 {
   "action": "create_slide",
-  "notes": "Slide 2: Concept Visual",
-  "imagePrompt": "minimalist aesthetic 3d render of an hourglass on dark reflective pedestal, cinematic studio lighting",
-  "html": "<div style=\\"position:relative; width:100%; height:100%; overflow:hidden; box-sizing:border-box; background:#000;\\"><img src=\\"{{IMAGE}}\\" style=\\"position:absolute; inset:0; width:100%; height:100%; object-fit:cover; opacity:0.75;\\" /><div style=\\"position:relative; z-index:2; display:flex; flex-direction:column; justify-content:flex-end; height:100%; padding:80px; color:#fff;\\"><h2 style=\\"font-size:48px; font-weight:700;\\">Key Insight Title</h2></div></div>"
+  "notes": "Slide 2: The Problem",
+  "html": "<div style=\\"display:flex; flex-direction:column; justify-content:space-between; width:100%; height:100%; padding:80px; background:#070b14; color:#f8fafc; font-family:'Inter',sans-serif; box-sizing:border-box;\\"><div><span style=\\"font-size:18px; font-weight:700; color:#f87171; letter-spacing:1px;\\">01 / SISTEM INTI</span><h2 style=\\"font-size:48px; font-weight:800; line-height:1.2; margin:24px 0 32px 0;\\">Semua lead masuk ke sales yang tepat—secara otomatis.</h2><div style=\\"display:flex; flex-direction:column; gap:20px;\\"><div style=\\"padding:24px; border-radius:16px; background:#111827; border:1px solid #1f2937;\\"><h3 style=\\"font-size:22px; font-weight:700; margin:0 0 8px 0; color:#ffffff;\\">01 Webhook otomatis</h3><p style=\\"font-size:18px; color:#94a3b8; margin:0;\\">Terhubung dengan Meta Ads atau landing page Anda.</p></div></div></div></div>"
 }
 \`\`\`
 

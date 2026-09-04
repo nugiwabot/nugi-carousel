@@ -54,6 +54,26 @@ export interface ActionResult {
  * Execute an action on a carousel.
  * Returns a human-friendly markdown notification message and optional data payload for real-time state sync.
  */
+/**
+ * Helper to inject a generated background image into slide HTML, ensuring contrast and visibility.
+ */
+function injectBackgroundImage(html: string, imageUri: string): string {
+  if (html.includes("{{IMAGE}}")) {
+    return html.replaceAll("{{IMAGE}}", imageUri);
+  }
+  if (html.includes('<img src=""')) {
+    return html.replaceAll('<img src=""', `<img src="${imageUri}"`);
+  }
+
+  // Strip solid background on outermost container so image shines through
+  const strippedHtml = html.replace(
+    /(<div[^>]*style=["'][^"']*?)(background(?:-color)?:\s*(?:#[0-9a-fA-F]{3,8}|rgba?\([^)]+\)|hsla?\([^)]+\)|[a-zA-Z]+))([^"']*?["'])/i,
+    "$1background:transparent$3"
+  );
+
+  return `<div style="position:relative; width:100%; height:100%; overflow:hidden; box-sizing:border-box; background:#070b14;"><img src="${imageUri}" style="position:absolute; inset:0; width:100%; height:100%; object-fit:cover; opacity:0.45; filter:brightness(0.7) contrast(1.1); z-index:0;" /><div style="position:absolute; inset:0; background:linear-gradient(180deg, rgba(7,11,20,0.35) 0%, rgba(7,11,20,0.85) 60%, #070b14 100%); z-index:1;"></div><div style="position:relative; z-index:2; width:100%; height:100%; box-sizing:border-box;">${strippedHtml}</div></div>`;
+}
+
 export async function executeCarouselAction(
   carouselId: string,
   action: CarouselAction
@@ -71,29 +91,37 @@ export async function executeCarouselAction(
       case "create_slide": {
         let finalHtml = action.html;
 
-        // If an image prompt was requested, generate via RunPod SDXL
-        if (action.imagePrompt && action.imagePrompt.trim()) {
+        // Detect if this is Slide 1 (Cover / Hook)
+        const isSlide1 =
+          carousel.slides.length === 0 ||
+          (action.notes && /slide\s*1|hook|cover/i.test(action.notes));
+
+        let effectiveImagePrompt = action.imagePrompt?.trim();
+
+        // Auto-generate AI background image prompt for Slide 1 if omitted
+        if (!effectiveImagePrompt && isSlide1 && process.env.RUNPOD_API_KEY) {
+          const titleMatch = finalHtml.match(/<h[12][^>]*>([\s\S]*?)<\/h[12]>/i);
+          const titleText = titleMatch
+            ? titleMatch[1].replace(/<[^>]+>/g, "").trim()
+            : (carousel.name || "business strategy innovation");
+          effectiveImagePrompt = `Cinematic photorealistic shot, aesthetic dark obsidian atmosphere, dramatic studio lighting, related to ${titleText.slice(0, 120)}, 8k resolution, ultra detailed, no text, no watermark`;
+        }
+
+        // If an image prompt was requested or auto-synthesized for Slide 1, generate via RunPod SDXL
+        if (effectiveImagePrompt) {
           try {
             const imageDataUri = await generateImage(
-              action.imagePrompt.trim(),
+              effectiveImagePrompt,
               dims.width,
               dims.height
             );
-            // Replace {{IMAGE}} placeholder or empty img src
-            if (finalHtml.includes("{{IMAGE}}")) {
-              finalHtml = finalHtml.replaceAll("{{IMAGE}}", imageDataUri);
-            } else if (finalHtml.includes('<img src=""')) {
-              finalHtml = finalHtml.replaceAll('<img src=""', `<img src="${imageDataUri}"`);
-            } else if (!finalHtml.includes("<img")) {
-              // Prepend background image wrapper if no img exists
-              finalHtml = `<div style="position:relative; width:100%; height:100%; overflow:hidden;"><img src="${imageDataUri}" style="position:absolute; inset:0; width:100%; height:100%; object-fit:cover; z-index:0;" /><div style="position:relative; z-index:1; width:100%; height:100%;">${finalHtml}</div></div>`;
-            }
+            finalHtml = injectBackgroundImage(finalHtml, imageDataUri);
           } catch (err) {
             console.error("[actions] Image generation error:", err);
             // Fallback: replace placeholder with a stylish gradient/notice
             finalHtml = finalHtml.replaceAll(
               "{{IMAGE}}",
-              "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='1000' height='1000'><rect width='100%' height='100%' fill='%231e293b'/><text x='50%' y='50%' fill='%2394a3b8' font-size='32' text-anchor='middle' font-family='sans-serif'>Image Generation Failed</text></svg>"
+              "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='1000' height='1000'><rect width='100%' height='100%' fill='%23070b14'/><text x='50%' y='50%' fill='%2364748b' font-size='28' text-anchor='middle' font-family='sans-serif'>AI Image Fallback</text></svg>"
             );
           }
         }
@@ -107,7 +135,7 @@ export async function executeCarouselAction(
         const latestCarousel = await getCarousel(carouselId);
 
         if (newSlide) {
-          const imgNotice = action.imagePrompt ? " 🎨 *[AI Image generated via RunPod]*" : "";
+          const imgNotice = effectiveImagePrompt ? " 🎨 *[AI Background Image generated via RunPod]*" : "";
           return {
             notification: `\n\n✅ **Slide ${newSlide.order + 1} dibuat:** ${action.notes || "New slide"}${imgNotice}\n\n`,
             data: { carousel: latestCarousel, slide: newSlide },
@@ -128,7 +156,7 @@ export async function executeCarouselAction(
               dims.width,
               dims.height
             );
-            finalHtml = finalHtml.replaceAll("{{IMAGE}}", imageDataUri);
+            finalHtml = injectBackgroundImage(finalHtml, imageDataUri);
           } catch (err) {
             console.error("[actions] Image generation error:", err);
           }

@@ -51,10 +51,32 @@ export async function generateImage(
   prompt: string,
   width = 1024,
   height = 1024,
-  negativePrompt = "blurry, low quality, watermark, text, ugly, deformed"
+  negativePrompt = "blurry, low quality, watermark, text, ugly, deformed, distorted, lowres"
 ): Promise<string> {
   const apiKey = getApiKey();
   const endpointId = getEndpointId();
+
+  // Normalize dimensions for SDXL (multiples of 64, optimized ~1MP)
+  let safeWidth = width;
+  let safeHeight = height;
+  const ratio = width / height;
+
+  if (Math.abs(ratio - 0.8) < 0.05) {
+    // 4:5 ratio (e.g. 1080x1350 -> 1024x1280)
+    safeWidth = 1024;
+    safeHeight = 1280;
+  } else if (Math.abs(ratio - 1.0) < 0.05) {
+    // 1:1 ratio (e.g. 1080x1080 -> 1024x1024)
+    safeWidth = 1024;
+    safeHeight = 1024;
+  } else if (Math.abs(ratio - 0.5625) < 0.05) {
+    // 9:16 ratio (e.g. 1080x1920 -> 768x1344)
+    safeWidth = 768;
+    safeHeight = 1344;
+  } else {
+    safeWidth = Math.max(512, Math.round(width / 64) * 64);
+    safeHeight = Math.max(512, Math.round(height / 64) * 64);
+  }
 
   // Submit job
   const submitResponse = await fetch(
@@ -69,8 +91,8 @@ export async function generateImage(
         input: {
           prompt,
           negative_prompt: negativePrompt,
-          width,
-          height,
+          width: safeWidth,
+          height: safeHeight,
           num_inference_steps: 25,
           guidance_scale: 7.5,
           num_images_per_prompt: 1,
@@ -144,21 +166,35 @@ function extractImageDataUri(
     );
   }
 
-  // worker-sdxl returns: { images: [{ image: "base64..." }] }
-  const base64 =
-    output.images?.[0]?.image ||
-    output.image;
+  let candidate: string | undefined;
 
-  if (base64) {
-    // Already a data URI?
-    if (base64.startsWith("data:")) return base64;
-    // Raw base64
-    return `data:image/png;base64,${base64}`;
+  // worker-sdxl returns: { images: [{ image: "base64..." }] } or { images: ["base64..." / "http..."] }
+  if (Array.isArray(output.images) && output.images.length > 0) {
+    const first = output.images[0];
+    if (typeof first === "string") {
+      candidate = first;
+    } else if (first && typeof first === "object" && "image" in first) {
+      candidate = (first as { image: string }).image;
+    }
   }
 
-  // Some workers return a URL
-  if (output.image_url) {
-    return output.image_url;
+  if (!candidate && typeof output.image === "string") {
+    candidate = output.image;
+  }
+  if (!candidate && typeof output.image_url === "string") {
+    candidate = output.image_url;
+  }
+
+  if (candidate) {
+    if (
+      candidate.startsWith("http://") ||
+      candidate.startsWith("https://") ||
+      candidate.startsWith("data:")
+    ) {
+      return candidate;
+    }
+    // Raw base64 PNG
+    return `data:image/png;base64,${candidate}`;
   }
 
   throw new Error(
