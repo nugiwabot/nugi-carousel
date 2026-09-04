@@ -68,21 +68,25 @@ export function streamLLM(
 
       let response: Response;
       try {
-        response = await fetch(`${SUMOPOD_BASE_URL}/chat/completions`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${apiKey}`,
-          },
-          body: JSON.stringify({
+          const requestBody: Record<string, unknown> = {
             model,
             messages,
             stream: true,
-            temperature: 0.7,
             max_tokens: 8192,
-          }),
-          signal: abortSignal,
-        });
+          };
+          if (process.env.SUMOPOD_TEMPERATURE) {
+            requestBody.temperature = parseFloat(process.env.SUMOPOD_TEMPERATURE);
+          }
+
+          response = await fetch(`${SUMOPOD_BASE_URL}/chat/completions`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${apiKey}`,
+            },
+            body: JSON.stringify(requestBody),
+            signal: abortSignal,
+          });
       } catch (err) {
         const message =
           err instanceof Error ? err.message : "Network error";
@@ -281,19 +285,23 @@ export async function completeLLM(
   const apiKey = getApiKey();
   const model = getModel();
 
+  const requestBody: Record<string, unknown> = {
+    model,
+    messages,
+    stream: false,
+    max_tokens: 4096,
+  };
+  if (process.env.SUMOPOD_TEMPERATURE) {
+    requestBody.temperature = parseFloat(process.env.SUMOPOD_TEMPERATURE);
+  }
+
   const response = await fetch(`${SUMOPOD_BASE_URL}/chat/completions`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${apiKey}`,
     },
-    body: JSON.stringify({
-      model,
-      messages,
-      stream: false,
-      temperature: 0.7,
-      max_tokens: 4096,
-    }),
+    body: JSON.stringify(requestBody),
   });
 
   if (!response.ok) {
