@@ -95,7 +95,6 @@ export async function generateImage(
           height: safeHeight,
           num_inference_steps: 25,
           guidance_scale: 7.5,
-          num_images_per_prompt: 1,
         },
       }),
     }
