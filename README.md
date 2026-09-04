@@ -48,6 +48,8 @@ Vercel Serverless
 
 ## 🚀 Quickstart (Local Development)
 
+> 📖 **Pindah ke Komputer Baru?** Baca panduan lengkap langkah-demi-langkah di [**docs/PANDUAN_PINDAH_KOMPUTER.md**](./docs/PANDUAN_PINDAH_KOMPUTER.md).
+
 ### 1. Clone & Install Dependencies
 ```bash
 git clone https://github.com/nugiwabot/nugi-carousel.git
