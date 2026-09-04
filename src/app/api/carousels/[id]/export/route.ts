@@ -8,11 +8,17 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 export async function POST(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const carousel = await getCarousel(id);
+  let bodyCarousel = null;
+  try {
+    const body = await request.json();
+    bodyCarousel = body?.carousel;
+  } catch {}
+
+  const carousel = bodyCarousel || (await getCarousel(id));
 
   if (!carousel) {
     return NextResponse.json({ error: "Carousel not found" }, { status: 404 });

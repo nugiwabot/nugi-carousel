@@ -8,7 +8,7 @@ import {
 } from "@/lib/carousels";
 import { generateImage } from "@/lib/ai/image";
 import { DIMENSIONS } from "@/types/carousel";
-import type { Slide } from "@/types/carousel";
+import type { Slide, Carousel } from "@/types/carousel";
 
 export type CarouselAction =
   | {
@@ -41,6 +41,7 @@ export type CarouselAction =
 export interface ActionResult {
   notification: string;
   data?: {
+    carousel?: Carousel | null;
     slide?: Slide;
     updatedSlide?: Slide;
     deletedSlideId?: string;
@@ -103,11 +104,13 @@ export async function executeCarouselAction(
           action.notes || `Slide ${carousel.slides.length + 1}`
         );
 
+        const latestCarousel = await getCarousel(carouselId);
+
         if (newSlide) {
           const imgNotice = action.imagePrompt ? " 🎨 *[AI Image generated via RunPod]*" : "";
           return {
             notification: `\n\n✅ **Slide ${newSlide.order + 1} dibuat:** ${action.notes || "New slide"}${imgNotice}\n\n`,
-            data: { slide: newSlide },
+            data: { carousel: latestCarousel, slide: newSlide },
           };
         }
         return {
@@ -131,15 +134,26 @@ export async function executeCarouselAction(
           }
         }
 
-        const updated = await updateSlide(carouselId, action.slideId, {
+        let updated = await updateSlide(carouselId, action.slideId, {
           html: finalHtml,
           notes: action.notes,
         });
 
+        // Fallback: If updateSlide didn't match slideId, create as new slide so content is never lost
+        if (!updated) {
+          updated = await addSlide(
+            carouselId,
+            finalHtml,
+            action.notes || "Slide"
+          );
+        }
+
+        const latestCarousel = await getCarousel(carouselId);
+
         if (updated) {
           return {
             notification: `\n\n✅ **Slide ${updated.order + 1} diperbarui:** ${action.notes || updated.id}\n\n`,
-            data: { updatedSlide: updated },
+            data: { carousel: latestCarousel, updatedSlide: updated },
           };
         }
         return {
@@ -149,10 +163,11 @@ export async function executeCarouselAction(
 
       case "delete_slide": {
         const deleted = await deleteSlide(carouselId, action.slideId);
+        const latestCarousel = await getCarousel(carouselId);
         if (deleted) {
           return {
             notification: `\n\n🗑️ **Slide berhasil dihapus.**\n\n`,
-            data: { deletedSlideId: action.slideId },
+            data: { carousel: latestCarousel, deletedSlideId: action.slideId },
           };
         }
         return {
@@ -165,9 +180,10 @@ export async function executeCarouselAction(
           caption: action.caption,
           hashtags: action.hashtags || [],
         });
+        const latestCarousel = await getCarousel(carouselId);
         return {
           notification: `\n\n📝 **Caption & hashtags Instagram telah disimpan ke carousel!**\n\n`,
-          data: { caption: action.caption, hashtags: action.hashtags },
+          data: { carousel: latestCarousel, caption: action.caption, hashtags: action.hashtags },
         };
       }
 

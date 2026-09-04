@@ -46,6 +46,20 @@ export default function CarouselEditorPage({ params }: PageProps) {
   const handleCarouselAction = useCallback(
     (event: any) => {
       if (!event) return;
+
+      // 1. Full carousel payload from server action
+      if (event.carousel && Array.isArray(event.carousel.slides)) {
+        setCarousel(event.carousel);
+        if (event.carousel.slides.length > 0) {
+          setActiveSlide(event.carousel.slides.length - 1);
+        }
+        try {
+          localStorage.setItem(`carousel_${id}`, JSON.stringify(event.carousel));
+        } catch {}
+        return;
+      }
+
+      // 2. Individual action fallback
       if (event.action === "create_slide" && event.slide) {
         setCarousel((prev) => {
           if (!prev) return prev;
@@ -63,9 +77,13 @@ export default function CarouselEditorPage({ params }: PageProps) {
       } else if (event.action === "update_slide" && event.updatedSlide) {
         setCarousel((prev) => {
           if (!prev) return prev;
-          const newSlides = prev.slides.map((s) =>
-            s.id === event.updatedSlide.id ? event.updatedSlide : s
-          );
+          const exists = prev.slides.some((s) => s.id === event.updatedSlide.id);
+          const newSlides = exists
+            ? prev.slides.map((s) =>
+                s.id === event.updatedSlide.id ? event.updatedSlide : s
+              )
+            : [...prev.slides, event.updatedSlide];
+          setActiveSlide(newSlides.length - 1);
           const updated = { ...prev, slides: newSlides };
           try {
             localStorage.setItem(`carousel_${id}`, JSON.stringify(updated));
@@ -126,7 +144,15 @@ export default function CarouselEditorPage({ params }: PageProps) {
         const data = await res.json();
         setNotFound(false);
         setCarousel((prev) => {
-          // If new slides were added during generation, jump to the latest slide
+          // Never downgrade client slides if this cold server container has fewer slides!
+          if (prev && prev.slides && data.slides && prev.slides.length > data.slides.length) {
+            fetch(`/api/carousels/${id}/sync`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(prev),
+            }).catch(() => {});
+            return prev;
+          }
           if (prev && data.slides.length > prev.slides.length) {
             setActiveSlide(data.slides.length - 1);
           } else {
@@ -134,11 +160,11 @@ export default function CarouselEditorPage({ params }: PageProps) {
               data.slides.length === 0 ? 0 : Math.min(prevIdx, data.slides.length - 1)
             );
           }
+          try {
+            localStorage.setItem(`carousel_${id}`, JSON.stringify(data));
+          } catch {}
           return data;
         });
-        try {
-          localStorage.setItem(`carousel_${id}`, JSON.stringify(data));
-        } catch {}
       }
     } catch {
       // ignore network errors
@@ -177,10 +203,15 @@ export default function CarouselEditorPage({ params }: PageProps) {
           const data = await res.json();
           if (!active) return;
           setNotFound(false);
-          setCarousel(data);
-          try {
-            localStorage.setItem(`carousel_${id}`, JSON.stringify(data));
-          } catch {}
+          setCarousel((prev) => {
+            if (prev && prev.slides && data.slides && prev.slides.length > data.slides.length) {
+              return prev;
+            }
+            try {
+              localStorage.setItem(`carousel_${id}`, JSON.stringify(data));
+            } catch {}
+            return data;
+          });
           setActiveSlide((prevIdx) =>
             data.slides.length === 0 ? 0 : Math.min(prevIdx, data.slides.length - 1)
           );
@@ -203,26 +234,23 @@ export default function CarouselEditorPage({ params }: PageProps) {
     }
   }, [carousel, id]);
 
-  // Poll for carousel updates while AI is generating slides
-  useEffect(() => {
-    if (!isGenerating) return;
-    const interval = setInterval(() => {
-      fetchCarousel();
-    }, 500);
-    return () => clearInterval(interval);
-  }, [isGenerating, fetchCarousel]);
-
   const handleAspectChange = async (ratio: AspectRatio) => {
     if (!carousel) return;
-    const res = await fetch(`/api/carousels/${id}`, {
+    const updated = { ...carousel, aspectRatio: ratio };
+    setCarousel(updated);
+    try {
+      localStorage.setItem(`carousel_${id}`, JSON.stringify(updated));
+    } catch {}
+    fetch(`/api/carousels/${id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ aspectRatio: ratio }),
-    });
-    if (res.ok) {
-      const updated = await res.json();
-      setCarousel(updated);
-    }
+    }).catch(() => {});
+    fetch(`/api/carousels/${id}/sync`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(updated),
+    }).catch(() => {});
   };
 
   const handleDeleteSlide = (slideId: string) => {
@@ -233,10 +261,21 @@ export default function CarouselEditorPage({ params }: PageProps) {
       title: `Delete slide ${slideIndex + 1}?`,
       description: "This action cannot be undone.",
       onConfirm: async () => {
-        const res = await fetch(`/api/carousels/${id}/slides/${slideId}`, {
-          method: "DELETE",
-        });
-        if (res.ok) await fetchCarousel();
+        const newSlides = carousel.slides
+          .filter((s) => s.id !== slideId)
+          .map((s, idx) => ({ ...s, order: idx }));
+        const updated = { ...carousel, slides: newSlides };
+        setCarousel(updated);
+        setActiveSlide((prev) => Math.min(prev, Math.max(0, newSlides.length - 1)));
+        try {
+          localStorage.setItem(`carousel_${id}`, JSON.stringify(updated));
+        } catch {}
+        fetch(`/api/carousels/${id}/slides/${slideId}`, { method: "DELETE" }).catch(() => {});
+        fetch(`/api/carousels/${id}/sync`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(updated),
+        }).catch(() => {});
       },
     });
   };
@@ -245,7 +284,20 @@ export default function CarouselEditorPage({ params }: PageProps) {
     const res = await fetch(`/api/carousels/${id}/slides/${slideId}/undo`, {
       method: "POST",
     });
-    if (res.ok) await fetchCarousel();
+    if (res.ok) {
+      const updatedSlide = await res.json();
+      setCarousel((prev) => {
+        if (!prev) return prev;
+        const newSlides = prev.slides.map((s) =>
+          s.id === slideId ? updatedSlide : s
+        );
+        const updated = { ...prev, slides: newSlides };
+        try {
+          localStorage.setItem(`carousel_${id}`, JSON.stringify(updated));
+        } catch {}
+        return updated;
+      });
+    }
   };
 
   const handleDeleteCarousel = useCallback(() => {
@@ -255,6 +307,9 @@ export default function CarouselEditorPage({ params }: PageProps) {
       title: `Delete "${carousel.name}"?`,
       description: "This will permanently delete the carousel and all its slides.",
       onConfirm: async () => {
+        try {
+          localStorage.removeItem(`carousel_${id}`);
+        } catch {}
         const res = await fetch(`/api/carousels/${id}`, { method: "DELETE" });
         if (res.ok) router.push("/");
       },
@@ -267,19 +322,44 @@ export default function CarouselEditorPage({ params }: PageProps) {
 
   const handleStreamEnd = useCallback(() => {
     setIsGenerating(false);
-    fetchCarousel();
-  }, [fetchCarousel]);
+    // Sync whatever carousel the client currently holds to the server container in background
+    setCarousel((current) => {
+      if (current) {
+        fetch(`/api/carousels/${id}/sync`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(current),
+        }).catch(() => {});
+      }
+      return current;
+    });
+  }, [id]);
 
   const handleReorderSlides = useCallback(
     async (slideIds: string[]) => {
-      await fetch(`/api/carousels/${id}/slides`, {
+      if (!carousel) return;
+      const slideMap = new Map(carousel.slides.map((s) => [s.id, s]));
+      const reordered = slideIds.map((sid, idx) => {
+        const s = slideMap.get(sid)!;
+        return { ...s, order: idx };
+      });
+      const updated = { ...carousel, slides: reordered };
+      setCarousel(updated);
+      try {
+        localStorage.setItem(`carousel_${id}`, JSON.stringify(updated));
+      } catch {}
+      fetch(`/api/carousels/${id}/slides`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ slideIds }),
-      });
-      await fetchCarousel();
+      }).catch(() => {});
+      fetch(`/api/carousels/${id}/sync`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updated),
+      }).catch(() => {});
     },
-    [id, fetchCarousel]
+    [carousel, id]
   );
 
   const handleAddSlideRequest = useCallback(() => {
@@ -432,6 +512,7 @@ export default function CarouselEditorPage({ params }: PageProps) {
             <ExportButton
               carouselId={carousel.id}
               slideCount={carousel.slides.length}
+              carousel={carousel}
             />
           </div>
 

@@ -4,12 +4,15 @@ import { useState } from "react";
 import { Download, Loader2, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
+import type { Carousel } from "@/types/carousel";
+
 interface ExportButtonProps {
   carouselId: string;
   slideCount: number;
+  carousel?: Carousel | null;
 }
 
-export function ExportButton({ carouselId, slideCount }: ExportButtonProps) {
+export function ExportButton({ carouselId, slideCount, carousel }: ExportButtonProps) {
   const [exporting, setExporting] = useState(false);
   const [progress, setProgress] = useState({ current: 0, total: 0 });
   const [done, setDone] = useState(false);
@@ -23,6 +26,8 @@ export function ExportButton({ carouselId, slideCount }: ExportButtonProps) {
     try {
       const response = await fetch(`/api/carousels/${carouselId}/export`, {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ carousel }),
       });
 
       if (!response.ok) {
