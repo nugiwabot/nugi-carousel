@@ -1,4 +1,4 @@
-import puppeteer, { type Browser } from "puppeteer";
+﻿import puppeteerCore, { type Browser } from "puppeteer-core";
 import { readFile } from "fs/promises";
 import path from "path";
 import sharp from "sharp";
@@ -12,6 +12,43 @@ let browser: Browser | null = null;
 let exportCount = 0;
 const MAX_EXPORTS_BEFORE_RESTART = 50;
 
+async function getBrowserExecutable(): Promise<string | undefined> {
+  // On Vercel/production: use @sparticuz/chromium
+  if (process.env.VERCEL || process.env.NODE_ENV === "production") {
+    try {
+      // Dynamic import to avoid bundling issues in dev
+      const chromium = await import("@sparticuz/chromium");
+      return await chromium.default.executablePath();
+    } catch {
+      throw new Error(
+        "Export failed: @sparticuz/chromium not available. Make sure it is installed."
+      );
+    }
+  }
+  // In local dev: use system chromium or let puppeteer find it
+  // Try common locations
+  const candidates = [
+    process.env.PUPPETEER_EXECUTABLE_PATH,
+    "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+    "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
+    "/usr/bin/google-chrome",
+    "/usr/bin/chromium-browser",
+    "/usr/bin/chromium",
+    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+  ].filter(Boolean) as string[];
+
+  for (const candidate of candidates) {
+    try {
+      await readFile(candidate);
+      return candidate;
+    } catch {
+      // not found, try next
+    }
+  }
+  // Let puppeteer-core decide (will fail if no chrome installed)
+  return undefined;
+}
+
 async function getBrowser(): Promise<Browser> {
   if (browser && exportCount >= MAX_EXPORTS_BEFORE_RESTART) {
     await browser.close().catch(() => {});
@@ -19,9 +56,30 @@ async function getBrowser(): Promise<Browser> {
     exportCount = 0;
   }
   if (!browser || !browser.isConnected()) {
-    browser = await puppeteer.launch({
+    const executablePath = await getBrowserExecutable();
+
+    const args = [
+      "--no-sandbox",
+      "--disable-setuid-sandbox",
+      "--disable-gpu",
+      "--disable-dev-shm-usage",
+      "--single-process",
+    ];
+
+    // @sparticuz/chromium provides its own args
+    if (process.env.VERCEL || process.env.NODE_ENV === "production") {
+      try {
+        const chromium = await import("@sparticuz/chromium");
+        args.push(...(chromium.default.args || []));
+      } catch {
+        // ignore
+      }
+    }
+
+    browser = await puppeteerCore.launch({
+      executablePath,
       headless: true,
-      args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-gpu"],
+      args,
     });
     exportCount = 0;
   }
@@ -30,19 +88,31 @@ async function getBrowser(): Promise<Browser> {
 
 /**
  * Inline all image references in slide HTML.
- * Replaces /uploads/xxx.png paths with data: URIs.
+ * For Vercel: /api/uploads/ paths. For local: /uploads/ paths.
+ * Replaces with data: URIs for self-contained export.
  */
 async function inlineImages(html: string): Promise<string> {
-  const uploadDir = path.resolve(process.cwd(), "public");
-  const imgRegex = /(?:src=["']|url\(["']?)(\/uploads\/[^"'\s)]+)/g;
+  const isVercel = !!process.env.VERCEL;
+
+  // Match /uploads/ or /api/uploads/ paths
+  const imgRegex = /(?:src=["']|url\(["']?)(\/(?:api\/)?uploads\/[^"'\s)]+)/g;
   const matches = [...html.matchAll(imgRegex)];
 
   let result = html;
   for (const match of matches) {
     const imgPath = match[1];
     try {
-      const fullPath = path.join(uploadDir, imgPath);
-      const buffer = await readFile(fullPath);
+      let buffer: Buffer;
+      if (isVercel) {
+        // Read from /tmp/nugi-uploads
+        const filename = imgPath.replace(/^\/api\/uploads\//, "");
+        const fullPath = path.join("/tmp/nugi-uploads", filename);
+        buffer = await readFile(fullPath);
+      } else {
+        const uploadDir = path.resolve(process.cwd(), "public");
+        const fullPath = path.join(uploadDir, imgPath);
+        buffer = await readFile(fullPath);
+      }
       const ext = path.extname(imgPath).toLowerCase();
       const mime =
         ext === ".png"

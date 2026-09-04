@@ -4,7 +4,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { ChatMessage } from "./ChatMessage";
 import { ChatInput } from "./ChatInput";
 import { ReferenceImages } from "./ReferenceImages";
-import { AlertCircle, Plug } from "lucide-react";
+import { AlertCircle } from "lucide-react";
 import type { ReferenceImage } from "@/types/carousel";
 
 interface Message {
@@ -16,7 +16,6 @@ interface Message {
 interface ChatPanelProps {
   carouselId: string;
   referenceImages?: ReferenceImage[];
-  claudeAvailable: boolean;
   onStreamStart?: () => void;
   onStreamEnd?: () => void;
   chatInputRef?: React.RefObject<HTMLTextAreaElement | null>;
@@ -24,7 +23,6 @@ interface ChatPanelProps {
 
 export function ChatPanel({
   carouselId,
-  claudeAvailable,
   referenceImages = [],
   onStreamStart,
   onStreamEnd,
@@ -32,15 +30,12 @@ export function ChatPanel({
 }: ChatPanelProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
-  const [sessionId, setSessionId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
 
-  // Load session ID and chat history from localStorage
+  // Load chat history from localStorage (persisted conversation)
   useEffect(() => {
-    const storedSession = localStorage.getItem(`chat-session-${carouselId}`);
-    if (storedSession) setSessionId(storedSession);
     try {
       const storedMessages = localStorage.getItem(`chat-messages-${carouselId}`);
       if (storedMessages) setMessages(JSON.parse(storedMessages));
@@ -63,9 +58,7 @@ export function ChatPanel({
 
   const handleClearChat = useCallback(() => {
     setMessages([]);
-    setSessionId(null);
     localStorage.removeItem(`chat-messages-${carouselId}`);
-    localStorage.removeItem(`chat-session-${carouselId}`);
   }, [carouselId]);
 
   const handleStopGenerating = useCallback(() => {
@@ -103,13 +96,19 @@ export function ChatPanel({
 
       abortRef.current = new AbortController();
 
+      // Build conversation history to send to API
+      const conversationHistory = messages.map((m) => ({
+        role: m.role,
+        content: m.content,
+      }));
+
       try {
         const response = await fetch("/api/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             message,
-            sessionId,
+            conversationHistory,
             carouselId,
           }),
           signal: abortRef.current.signal,
@@ -163,44 +162,6 @@ export function ChatPanel({
               } catch {
                 // skip unparseable
               }
-            } else if (line.startsWith("event: done")) {
-              // Next line has the done data
-            } else if (
-              line.startsWith("data: ") &&
-              line.includes("sessionId")
-            ) {
-              try {
-                const data = JSON.parse(line.slice(6));
-                if (data.sessionId) {
-                  setSessionId(data.sessionId);
-                  localStorage.setItem(
-                    `chat-session-${carouselId}`,
-                    data.sessionId
-                  );
-                }
-              } catch {
-                // skip
-              }
-            }
-          }
-        }
-
-        // Parse any remaining buffer for the done event
-        if (buffer.trim()) {
-          for (const line of buffer.split("\n")) {
-            if (line.startsWith("data: ")) {
-              try {
-                const data = JSON.parse(line.slice(6));
-                if (data.sessionId) {
-                  setSessionId(data.sessionId);
-                  localStorage.setItem(
-                    `chat-session-${carouselId}`,
-                    data.sessionId
-                  );
-                }
-              } catch {
-                // skip
-              }
             }
           }
         }
@@ -225,28 +186,9 @@ export function ChatPanel({
         onStreamEnd?.();
       }
     },
-    [isStreaming, sessionId, carouselId, onStreamStart, onStreamEnd, persistMessages]
+    [isStreaming, messages, carouselId, onStreamStart, onStreamEnd, persistMessages]
   );
 
-  if (!claudeAvailable) {
-    return (
-      <div className="h-full flex flex-col items-center justify-center p-6 text-center">
-        <Plug className="h-10 w-10 text-muted-foreground mb-3" />
-        <h3 className="font-semibold text-sm mb-1">Connect Claude CLI</h3>
-        <p className="text-xs text-muted-foreground max-w-[200px]">
-          Install Claude CLI to enable AI-powered carousel creation.{" "}
-          <a
-            href="https://docs.anthropic.com/en/docs/claude-code"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-accent underline"
-          >
-            Install guide
-          </a>
-        </p>
-      </div>
-    );
-  }
 
   return (
     <div className="h-full flex flex-col">

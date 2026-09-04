@@ -1,0 +1,14 @@
+{
+  "functions": {
+    "src/app/api/chat/route.ts": {
+      "maxDuration": 300
+    },
+    "src/app/api/generate-image/route.ts": {
+      "maxDuration": 180
+    },
+    "src/app/api/carousels/[id]/export/route.ts": {
+      "maxDuration": 300,
+      "memory": 3009
+    }
+  }
+}

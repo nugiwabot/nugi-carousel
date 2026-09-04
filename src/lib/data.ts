@@ -2,7 +2,14 @@ import { readFile, writeFile, rename, mkdir } from "fs/promises";
 import path from "path";
 import { Mutex } from "async-mutex";
 
-const DATA_DIR = path.resolve(process.cwd(), "data");
+// Use /tmp for Vercel compatibility. Vercel's filesystem is read-only except /tmp.
+// NOTE: /tmp data is ephemeral and does NOT persist across Vercel cold starts.
+// For production persistence, add Vercel KV or a database.
+const DATA_DIR =
+  process.env.VERCEL || process.env.NODE_ENV === "production"
+    ? "/tmp/nugi-data"
+    : path.resolve(process.cwd(), "data");
+
 const mutexes = new Map<string, Mutex>();
 
 function getMutex(filename: string): Mutex {

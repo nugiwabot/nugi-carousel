@@ -51,3 +51,16 @@ open-carrusel*.log
 
 # OS
 Thumbs.db
+
+# Local env
+.env.local
+.env.*.local
+
+# Vercel
+.vercel
+
+# Uploads (local dev only, on Vercel they go to /tmp)
+public/uploads/
+
+# Local data
+data/

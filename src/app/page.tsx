@@ -112,12 +112,15 @@ export default function DashboardPage() {
       <main className="flex-1 overflow-y-auto">
         <div className="max-w-5xl mx-auto px-6 py-8">
           <div className="flex items-center justify-between mb-6">
-            <div>
-              <h1 className="text-2xl font-bold">Open Carrusel</h1>
+              <h1 className="text-2xl font-bold">
+                Nugi Content Factory{" "}
+                <span className="text-muted-foreground font-normal text-lg">
+                  x Open Carrousel
+                </span>
+              </h1>
               <p className="text-sm text-muted-foreground mt-1">
-                Create Instagram carousels with AI
+                Create high-converting Instagram carousels with SumoPod AI & RunPod
               </p>
-            </div>
             <Button onClick={() => setShowCreateDialog(true)} variant="accent">
               <Plus className="h-4 w-4" />
               New Carousel

@@ -13,9 +13,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Open Carrusel — AI Carousel Builder",
+  title: "Nugi Content Factory x Open Carrousel",
   description:
-    "Open-source AI-powered Instagram carousel builder. Create beautiful carousels with natural language.",
+    "AI-powered Instagram carousel builder by Nugi Content Factory. Powered by SumoPod LLM and RunPod Image Generation.",
 };
 
 export default function RootLayout({

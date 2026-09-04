@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
-import { isClaudeAvailable } from "@/lib/claude-path";
 
+// AI is always available via SumoPod API (no local CLI required).
+// This endpoint is kept for backwards compatibility.
 export async function GET() {
-  return NextResponse.json({ available: isClaudeAvailable() });
+  return NextResponse.json({ available: true });
 }

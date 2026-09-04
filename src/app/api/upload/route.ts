@@ -4,15 +4,19 @@ import path from "path";
 import sharp from "sharp";
 import { generateId } from "@/lib/utils";
 
-const UPLOAD_DIR = path.resolve(process.cwd(), "public/uploads");
+// On Vercel, use /tmp for uploads. Note: files are ephemeral (lost on cold start).
+// On local dev, still use public/uploads for browser-accessible URLs.
+const isVercel = !!process.env.VERCEL;
+const UPLOAD_DIR = isVercel
+  ? "/tmp/nugi-uploads"
+  : path.resolve(process.cwd(), "public/uploads");
+
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 
 // Magic bytes for allowed image types
 const MAGIC_BYTES: Record<string, number[][]> = {
   png: [[0x89, 0x50, 0x4e, 0x47]],
-  jpg: [
-    [0xff, 0xd8, 0xff],
-  ],
+  jpg: [[0xff, 0xd8, 0xff]],
   webp: [[0x52, 0x49, 0x46, 0x46]], // RIFF header
 };
 
@@ -26,9 +30,7 @@ function matchesMagic(buffer: Uint8Array, magic: number[]): boolean {
   return magic.every((byte, i) => buffer[i] === byte);
 }
 
-function detectType(
-  buffer: Uint8Array
-): "image" | "font" | null {
+function detectType(buffer: Uint8Array): "image" | "font" | null {
   for (const patterns of Object.values(MAGIC_BYTES)) {
     for (const pattern of patterns) {
       if (matchesMagic(buffer, pattern)) return "image";
@@ -56,10 +58,7 @@ export async function POST(request: Request) {
     const file = formData.get("file");
 
     if (!file || !(file instanceof File)) {
-      return NextResponse.json(
-        { error: "No file provided" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "No file provided" }, { status: 400 });
     }
 
     if (file.size > MAX_FILE_SIZE) {
@@ -102,7 +101,8 @@ export async function POST(request: Request) {
       await writeFile(path.join(fontDir, filename), Buffer.from(arrayBuffer));
       return NextResponse.json({
         id,
-        url: `/uploads/fonts/${filename}`,
+        // On Vercel: served via /api/uploads/ route. On local: served from public/
+        url: isVercel ? `/api/uploads/fonts/${filename}` : `/uploads/fonts/${filename}`,
         type: "font",
       });
     }
@@ -119,7 +119,8 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       id,
-      url: `/uploads/${filename}`,
+      // On Vercel: served via /api/uploads/ route. On local: served from public/
+      url: isVercel ? `/api/uploads/${filename}` : `/uploads/${filename}`,
       type: "image",
     });
   } catch (error) {

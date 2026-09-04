@@ -13,7 +13,6 @@ import { SlideFilmstrip } from "@/components/editor/SlideFilmstrip";
 import { AspectRatioSelector } from "@/components/editor/AspectRatioSelector";
 import { ExportButton } from "@/components/editor/ExportButton";
 import { CaptionPanel } from "@/components/editor/CaptionPanel";
-import { SafeZoneOverlay } from "@/components/editor/SafeZoneOverlay";
 import { FullscreenPreview } from "@/components/editor/FullscreenPreview";
 import type { Carousel, AspectRatio } from "@/types/carousel";
 
@@ -27,7 +26,7 @@ export default function CarouselEditorPage({ params }: PageProps) {
   const [carousel, setCarousel] = useState<Carousel | null>(null);
   const [notFound, setNotFound] = useState(false);
   const [activeSlide, setActiveSlide] = useState(0);
-  const [claudeAvailable, setClaudeAvailable] = useState(true);
+  // claudeAvailable is kept for prop compatibility but AI is always available via SumoPod
   const [chatOpen, setChatOpen] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
   const [showSafeZones, setShowSafeZones] = useState(false);
@@ -72,18 +71,31 @@ export default function CarouselEditorPage({ params }: PageProps) {
 
   // Initial data load
   useEffect(() => {
-    const load = async () => {
-      await fetchCarousel();
+    let active = true;
+    void (async () => {
       try {
-        const res = await fetch("/api/chat/check");
-        const data: { available?: boolean } = await res.json();
-        if (data.available === false) setClaudeAvailable(false);
+        const res = await fetch(`/api/carousels/${id}`);
+        if (!active) return;
+        if (res.status === 404) {
+          setNotFound(true);
+          return;
+        }
+        if (res.ok) {
+          const data = await res.json();
+          if (!active) return;
+          setCarousel(data);
+          setActiveSlide((prevIdx) =>
+            data.slides.length === 0 ? 0 : Math.min(prevIdx, data.slides.length - 1)
+          );
+        }
       } catch {
-        // assume available
+        // ignore
       }
+    })();
+    return () => {
+      active = false;
     };
-    load();
-  }, [fetchCarousel]);
+  }, [id]);
 
   // Poll for carousel updates while AI is generating slides
   useEffect(() => {
@@ -241,7 +253,6 @@ export default function CarouselEditorPage({ params }: PageProps) {
           <div className="oc-fade w-80 border-r border-border shrink-0 flex flex-col bg-surface">
             <ChatPanel
               carouselId={id}
-              claudeAvailable={claudeAvailable}
               referenceImages={carousel.referenceImages || []}
               onStreamStart={handleStreamStart}
               onStreamEnd={handleStreamEnd}
