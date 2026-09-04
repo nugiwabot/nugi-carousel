@@ -4,9 +4,11 @@ import {
   deleteSlide,
   updateCarousel,
   getCarousel,
+  ensureCarousel,
 } from "@/lib/carousels";
 import { generateImage } from "@/lib/ai/image";
 import { DIMENSIONS } from "@/types/carousel";
+import type { Slide } from "@/types/carousel";
 
 export type CarouselAction =
   | {
@@ -25,7 +27,7 @@ export type CarouselAction =
   | {
       action: "delete_slide";
       slideId: string;
-    }
+      }
   | {
       action: "update_caption";
       caption: string;
@@ -36,18 +38,30 @@ export type CarouselAction =
       prompt: string;
     };
 
+export interface ActionResult {
+  notification: string;
+  data?: {
+    slide?: Slide;
+    updatedSlide?: Slide;
+    deletedSlideId?: string;
+    caption?: string;
+    hashtags?: string[];
+  };
+}
+
 /**
  * Execute an action on a carousel.
- * Returns a human-friendly markdown notification message for the chat stream.
+ * Returns a human-friendly markdown notification message and optional data payload for real-time state sync.
  */
 export async function executeCarouselAction(
   carouselId: string,
   action: CarouselAction
-): Promise<string> {
+): Promise<ActionResult> {
   try {
-    const carousel = await getCarousel(carouselId);
+    let carousel = await getCarousel(carouselId);
     if (!carousel) {
-      return `⚠️ *Error: Carousel ${carouselId} not found.*`;
+      // Auto-recover on ephemeral serverless containers: ensure carousel exists
+      carousel = await ensureCarousel(carouselId);
     }
 
     const dims = DIMENSIONS[carousel.aspectRatio] || DIMENSIONS["4:5"];
@@ -91,9 +105,14 @@ export async function executeCarouselAction(
 
         if (newSlide) {
           const imgNotice = action.imagePrompt ? " 🎨 *[AI Image generated via RunPod]*" : "";
-          return `\n\n✅ **Slide ${newSlide.order + 1} dibuat:** ${action.notes || "New slide"}${imgNotice}\n\n`;
+          return {
+            notification: `\n\n✅ **Slide ${newSlide.order + 1} dibuat:** ${action.notes || "New slide"}${imgNotice}\n\n`,
+            data: { slide: newSlide },
+          };
         }
-        return `⚠️ *Slide limit reached or failed to add slide.*`;
+        return {
+          notification: `⚠️ *Slide limit reached or failed to add slide.*`,
+        };
       }
 
       case "update_slide": {
@@ -118,17 +137,27 @@ export async function executeCarouselAction(
         });
 
         if (updated) {
-          return `\n\n✅ **Slide ${updated.order + 1} diperbarui:** ${action.notes || updated.id}\n\n`;
+          return {
+            notification: `\n\n✅ **Slide ${updated.order + 1} diperbarui:** ${action.notes || updated.id}\n\n`,
+            data: { updatedSlide: updated },
+          };
         }
-        return `⚠️ *Slide ${action.slideId} tidak ditemukan.*`;
+        return {
+          notification: `⚠️ *Slide ${action.slideId} tidak ditemukan.*`,
+        };
       }
 
       case "delete_slide": {
         const deleted = await deleteSlide(carouselId, action.slideId);
         if (deleted) {
-          return `\n\n🗑️ **Slide berhasil dihapus.**\n\n`;
+          return {
+            notification: `\n\n🗑️ **Slide berhasil dihapus.**\n\n`,
+            data: { deletedSlideId: action.slideId },
+          };
         }
-        return `⚠️ *Slide tidak ditemukan untuk dihapus.*`;
+        return {
+          notification: `⚠️ *Slide tidak ditemukan untuk dihapus.*`,
+        };
       }
 
       case "update_caption": {
@@ -136,20 +165,27 @@ export async function executeCarouselAction(
           caption: action.caption,
           hashtags: action.hashtags || [],
         });
-        return `\n\n📝 **Caption & hashtags Instagram telah disimpan ke carousel!**\n\n`;
+        return {
+          notification: `\n\n📝 **Caption & hashtags Instagram telah disimpan ke carousel!**\n\n`,
+          data: { caption: action.caption, hashtags: action.hashtags },
+        };
       }
 
       case "generate_image": {
         await generateImage(action.prompt, dims.width, dims.height);
-        return `\n\n🎨 **AI Image generated!**\n\n`;
+        return {
+          notification: `\n\n🎨 **AI Image generated!**\n\n`,
+        };
       }
 
       default:
-        return "";
+        return { notification: "" };
     }
   } catch (error) {
     console.error("[actions] executeCarouselAction error:", error);
-    return `\n\n⚠️ *Gagal memproses aksi carousel: ${(error as Error).message}*\n\n`;
+    return {
+      notification: `\n\n⚠️ *Gagal memproses aksi carousel: ${(error as Error).message}*\n\n`,
+    };
   }
 }
 

@@ -23,6 +23,55 @@ export async function getCarousel(id: string): Promise<Carousel | null> {
   return data.carousels.find((c) => c.id === id) ?? null;
 }
 
+export async function ensureCarousel(
+  id: string,
+  defaults?: Partial<Carousel>
+): Promise<Carousel> {
+  const data = await load();
+  let carousel = data.carousels.find((c) => c.id === id);
+  if (!carousel) {
+    carousel = {
+      id,
+      name: defaults?.name || "Untitled Carousel",
+      aspectRatio: defaults?.aspectRatio || "4:5",
+      slides: defaults?.slides || [],
+      referenceImages: defaults?.referenceImages || [],
+      chatSessionId: defaults?.chatSessionId || null,
+      isTemplate: false,
+      tags: defaults?.tags || [],
+      caption: defaults?.caption,
+      hashtags: defaults?.hashtags,
+      createdAt: defaults?.createdAt || now(),
+      updatedAt: now(),
+    };
+    data.carousels.push(carousel);
+    await save(data);
+  }
+  return carousel;
+}
+
+export async function upsertCarousel(carousel: Carousel): Promise<Carousel> {
+  const data = await load();
+  const idx = data.carousels.findIndex((c) => c.id === carousel.id);
+  if (idx === -1) {
+    data.carousels.push({
+      ...carousel,
+      slides: carousel.slides || [],
+      referenceImages: carousel.referenceImages || [],
+      createdAt: carousel.createdAt || now(),
+      updatedAt: now(),
+    });
+  } else {
+    data.carousels[idx] = {
+      ...data.carousels[idx],
+      ...carousel,
+      updatedAt: now(),
+    };
+  }
+  await save(data);
+  return carousel;
+}
+
 export async function createCarousel(
   name: string,
   aspectRatio: AspectRatio
@@ -100,8 +149,10 @@ export async function addSlide(
   notes = ""
 ): Promise<Slide | null> {
   const data = await load();
-  const carousel = data.carousels.find((c) => c.id === carouselId);
-  if (!carousel) return null;
+  let carousel = data.carousels.find((c) => c.id === carouselId);
+  if (!carousel) {
+    carousel = await ensureCarousel(carouselId);
+  }
   if (carousel.slides.length >= MAX_SLIDES) return null;
 
   const slide: Slide = {

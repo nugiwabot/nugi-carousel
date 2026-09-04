@@ -43,15 +43,88 @@ export default function CarouselEditorPage({ params }: PageProps) {
   // Ref for focusing chat input when + button is clicked
   const chatInputRef = useRef<HTMLTextAreaElement | null>(null);
 
+  const handleCarouselAction = useCallback(
+    (event: any) => {
+      if (!event) return;
+      if (event.action === "create_slide" && event.slide) {
+        setCarousel((prev) => {
+          if (!prev) return prev;
+          const exists = prev.slides.some((s) => s.id === event.slide.id);
+          const newSlides = exists
+            ? prev.slides.map((s) => (s.id === event.slide.id ? event.slide : s))
+            : [...prev.slides, event.slide];
+          setActiveSlide(newSlides.length - 1);
+          const updated = { ...prev, slides: newSlides };
+          try {
+            localStorage.setItem(`carousel_${id}`, JSON.stringify(updated));
+          } catch {}
+          return updated;
+        });
+      } else if (event.action === "update_slide" && event.updatedSlide) {
+        setCarousel((prev) => {
+          if (!prev) return prev;
+          const newSlides = prev.slides.map((s) =>
+            s.id === event.updatedSlide.id ? event.updatedSlide : s
+          );
+          const updated = { ...prev, slides: newSlides };
+          try {
+            localStorage.setItem(`carousel_${id}`, JSON.stringify(updated));
+          } catch {}
+          return updated;
+        });
+      } else if (event.action === "delete_slide" && event.deletedSlideId) {
+        setCarousel((prev) => {
+          if (!prev) return prev;
+          const newSlides = prev.slides.filter((s) => s.id !== event.deletedSlideId);
+          const updated = { ...prev, slides: newSlides };
+          try {
+            localStorage.setItem(`carousel_${id}`, JSON.stringify(updated));
+          } catch {}
+          return updated;
+        });
+      } else if (event.action === "update_caption") {
+        setCarousel((prev) => {
+          if (!prev) return prev;
+          const updated = {
+            ...prev,
+            caption: event.caption || prev.caption,
+            hashtags: event.hashtags || prev.hashtags,
+          };
+          try {
+            localStorage.setItem(`carousel_${id}`, JSON.stringify(updated));
+          } catch {}
+          return updated;
+        });
+      }
+    },
+    [id]
+  );
+
   const fetchCarousel = useCallback(async () => {
     try {
       const res = await fetch(`/api/carousels/${id}`);
       if (res.status === 404) {
+        // Check local storage fallback before marking as not found
+        try {
+          const cached = localStorage.getItem(`carousel_${id}`);
+          if (cached) {
+            const parsed = JSON.parse(cached);
+            setCarousel(parsed);
+            setNotFound(false);
+            fetch(`/api/carousels/${id}/sync`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: cached,
+            }).catch(() => {});
+            return;
+          }
+        } catch {}
         setNotFound(true);
         return;
       }
       if (res.ok) {
         const data = await res.json();
+        setNotFound(false);
         setCarousel((prev) => {
           // If new slides were added during generation, jump to the latest slide
           if (prev && data.slides.length > prev.slides.length) {
@@ -63,6 +136,9 @@ export default function CarouselEditorPage({ params }: PageProps) {
           }
           return data;
         });
+        try {
+          localStorage.setItem(`carousel_${id}`, JSON.stringify(data));
+        } catch {}
       }
     } catch {
       // ignore network errors
@@ -73,17 +149,38 @@ export default function CarouselEditorPage({ params }: PageProps) {
   useEffect(() => {
     let active = true;
     void (async () => {
+      // Check localStorage first for instant display
+      try {
+        const cached = localStorage.getItem(`carousel_${id}`);
+        if (cached && active) {
+          const parsed = JSON.parse(cached);
+          setCarousel(parsed);
+          fetch(`/api/carousels/${id}/sync`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: cached,
+          }).catch(() => {});
+        }
+      } catch {}
+
       try {
         const res = await fetch(`/api/carousels/${id}`);
         if (!active) return;
         if (res.status === 404) {
-          setNotFound(true);
+          const cached = localStorage.getItem(`carousel_${id}`);
+          if (!cached) {
+            setNotFound(true);
+          }
           return;
         }
         if (res.ok) {
           const data = await res.json();
           if (!active) return;
+          setNotFound(false);
           setCarousel(data);
+          try {
+            localStorage.setItem(`carousel_${id}`, JSON.stringify(data));
+          } catch {}
           setActiveSlide((prevIdx) =>
             data.slides.length === 0 ? 0 : Math.min(prevIdx, data.slides.length - 1)
           );
@@ -96,6 +193,15 @@ export default function CarouselEditorPage({ params }: PageProps) {
       active = false;
     };
   }, [id]);
+
+  // Persist carousel whenever it changes
+  useEffect(() => {
+    if (carousel) {
+      try {
+        localStorage.setItem(`carousel_${id}`, JSON.stringify(carousel));
+      } catch {}
+    }
+  }, [carousel, id]);
 
   // Poll for carousel updates while AI is generating slides
   useEffect(() => {
@@ -253,9 +359,11 @@ export default function CarouselEditorPage({ params }: PageProps) {
           <div className="oc-fade w-80 border-r border-border shrink-0 flex flex-col bg-surface">
             <ChatPanel
               carouselId={id}
+              currentCarousel={carousel}
               referenceImages={carousel.referenceImages || []}
               onStreamStart={handleStreamStart}
               onStreamEnd={handleStreamEnd}
+              onCarouselAction={handleCarouselAction}
               chatInputRef={chatInputRef}
             />
           </div>

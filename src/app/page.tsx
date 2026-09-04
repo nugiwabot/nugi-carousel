@@ -22,15 +22,44 @@ export default function DashboardPage() {
   const [brand, setBrand] = useState<BrandConfig | null>(null);
 
   useEffect(() => {
+    // Read local cache immediately for zero flicker
+    try {
+      const cached = localStorage.getItem("nugi_carousels_index");
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setCarousels(parsed);
+          setLoading(false);
+        }
+      }
+    } catch {}
+
     Promise.all([
-      fetch("/api/carousels").then((r) => r.json()),
-      fetch("/api/brand").then((r) => r.json()),
+      fetch("/api/carousels")
+        .then((r) => r.json())
+        .catch(() => ({ carousels: [] })),
+      fetch("/api/brand")
+        .then((r) => r.json())
+        .catch(() => ({})),
     ])
       .then(([carouselData, brandData]) => {
-        setCarousels(carouselData.carousels || []);
-        setBrand(brandData);
-        if (!brandData.name || brandData.name.trim() === "") {
-          setShowBrandSetup(true);
+        const serverCarousels: Carousel[] = carouselData.carousels || [];
+        setCarousels((prev) => {
+          // Merge server list with local cache
+          const map = new Map<string, Carousel>();
+          prev.forEach((c) => map.set(c.id, c));
+          serverCarousels.forEach((c) => map.set(c.id, c));
+          const merged = Array.from(map.values());
+          try {
+            localStorage.setItem("nugi_carousels_index", JSON.stringify(merged));
+          } catch {}
+          return merged;
+        });
+        if (brandData) {
+          setBrand(brandData);
+          if (!brandData.name || brandData.name.trim() === "") {
+            setShowBrandSetup(true);
+          }
         }
         setLoading(false);
       })
@@ -53,7 +82,14 @@ export default function DashboardPage() {
       onConfirm: async () => {
         const res = await fetch(`/api/carousels/${id}`, { method: "DELETE" });
         if (res.ok) {
-          setCarousels((prev) => prev.filter((c) => c.id !== id));
+          setCarousels((prev) => {
+            const updated = prev.filter((c) => c.id !== id);
+            try {
+              localStorage.setItem("nugi_carousels_index", JSON.stringify(updated));
+              localStorage.removeItem(`carousel_${id}`);
+            } catch {}
+            return updated;
+          });
         }
       },
     });
@@ -73,6 +109,15 @@ export default function DashboardPage() {
     });
     if (res.ok) {
       const carousel = await res.json();
+      try {
+        localStorage.setItem(`carousel_${carousel.id}`, JSON.stringify(carousel));
+        const cached = localStorage.getItem("nugi_carousels_index");
+        const list: Carousel[] = cached ? JSON.parse(cached) : [];
+        localStorage.setItem(
+          "nugi_carousels_index",
+          JSON.stringify([carousel, ...list.filter((c) => c.id !== carousel.id)])
+        );
+      } catch {}
       router.push(`/carousel/${carousel.id}`);
     }
   }, [router]);

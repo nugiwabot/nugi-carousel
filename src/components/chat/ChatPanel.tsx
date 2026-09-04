@@ -5,7 +5,7 @@ import { ChatMessage } from "./ChatMessage";
 import { ChatInput } from "./ChatInput";
 import { ReferenceImages } from "./ReferenceImages";
 import { AlertCircle } from "lucide-react";
-import type { ReferenceImage } from "@/types/carousel";
+import type { ReferenceImage, Carousel } from "@/types/carousel";
 
 interface Message {
   id: string;
@@ -15,17 +15,21 @@ interface Message {
 
 interface ChatPanelProps {
   carouselId: string;
+  currentCarousel?: Carousel | null;
   referenceImages?: ReferenceImage[];
   onStreamStart?: () => void;
   onStreamEnd?: () => void;
+  onCarouselAction?: (updateData: any) => void;
   chatInputRef?: React.RefObject<HTMLTextAreaElement | null>;
 }
 
 export function ChatPanel({
   carouselId,
+  currentCarousel,
   referenceImages = [],
   onStreamStart,
   onStreamEnd,
+  onCarouselAction,
   chatInputRef,
 }: ChatPanelProps) {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -110,6 +114,7 @@ export function ChatPanel({
             message,
             conversationHistory,
             carouselId,
+            currentCarousel,
           }),
           signal: abortRef.current.signal,
         });
@@ -146,6 +151,9 @@ export function ChatPanel({
                 const data = JSON.parse(line.slice(6));
                 if (data.type === "error" || data.error) {
                   throw new Error(data.error || "AI service error");
+                }
+                if (data.type === "carousel_update") {
+                  onCarouselAction?.(data);
                 }
                 if (data.type === "token" && typeof data.text === "string") {
                   accumulated += data.text;

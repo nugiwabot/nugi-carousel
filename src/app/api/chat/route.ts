@@ -2,10 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { streamLLM } from "@/lib/ai/llm";
 import { buildSystemPrompt } from "@/lib/chat-system-prompt";
 import { getBrand } from "@/lib/brand";
-import { getCarousel } from "@/lib/carousels";
+import { getCarousel, ensureCarousel, upsertCarousel } from "@/lib/carousels";
 import { getPreset } from "@/lib/style-presets";
 import { executeCarouselAction } from "@/lib/ai/actions";
 import type { ChatMessage } from "@/lib/ai/llm";
+import type { Carousel } from "@/types/carousel";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -17,6 +18,7 @@ export async function POST(request: NextRequest) {
     conversationHistory?: Array<{ role: "user" | "assistant"; content: string }>;
     carouselId?: string;
     stylePresetId?: string;
+    currentCarousel?: Carousel;
   };
   try {
     body = await request.json();
@@ -24,7 +26,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const { message, conversationHistory = [], carouselId, stylePresetId } = body;
+  const { message, conversationHistory = [], carouselId, stylePresetId, currentCarousel } = body;
 
   if (
     !message ||
@@ -45,9 +47,16 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // Ensure carousel exists in current serverless container memory/disk
+  let carousel: Carousel | null = null;
+  if (currentCarousel && currentCarousel.id) {
+    carousel = await upsertCarousel(currentCarousel);
+  } else if (carouselId) {
+    carousel = await ensureCarousel(carouselId);
+  }
+
   // Build dynamic system prompt with current brand + carousel + style preset context
   const brand = await getBrand();
-  const carousel = carouselId ? await getCarousel(carouselId) : null;
   const stylePreset = stylePresetId ? await getPreset(stylePresetId) : null;
   const systemPrompt = buildSystemPrompt(brand, carousel, stylePreset);
 
@@ -71,7 +80,7 @@ export async function POST(request: NextRequest) {
       if (carouselId) {
         return await executeCarouselAction(carouselId, action);
       }
-      return "";
+      return { notification: "" };
     }
   );
 

@@ -43,7 +43,7 @@ function getModel(): string {
 export function streamLLM(
   messages: ChatMessage[],
   abortSignal?: AbortSignal,
-  onAction?: (action: CarouselAction) => Promise<string>
+  onAction?: (action: CarouselAction) => Promise<string | { notification: string; data?: any }>
 ): ReadableStream<Uint8Array> {
   const encoder = new TextEncoder();
 
@@ -211,9 +211,18 @@ export function streamLLM(
                   const action = parseActionContent(actionContent);
                   if (action && onAction) {
                     try {
-                      const notification = await onAction(action);
-                      if (notification) {
-                        emitToken(notification);
+                      const result = await onAction(action);
+                      if (typeof result === "string") {
+                        if (result) emitToken(result);
+                      } else if (result && typeof result === "object") {
+                        if (result.notification) emitToken(result.notification);
+                        if (result.data) {
+                          controller.enqueue(
+                            encoder.encode(
+                              `data: ${JSON.stringify({ type: "carousel_update", action: action.action, ...result.data })}\n\n`
+                            )
+                          );
+                        }
                       }
                     } catch (actionErr) {
                       console.error("[actions] action execution error:", actionErr);
@@ -238,8 +247,19 @@ export function streamLLM(
           const action = parseActionContent(actionBuffer);
           if (action && onAction) {
             try {
-              const notification = await onAction(action);
-              if (notification) emitToken(notification);
+              const result = await onAction(action);
+              if (typeof result === "string") {
+                if (result) emitToken(result);
+              } else if (result && typeof result === "object") {
+                if (result.notification) emitToken(result.notification);
+                if (result.data) {
+                  controller.enqueue(
+                    encoder.encode(
+                      `data: ${JSON.stringify({ type: "carousel_update", action: action.action, ...result.data })}\n\n`
+                    )
+                  );
+                }
+              }
             } catch (actionErr) {
               console.error("[actions] unclosed action execution error:", actionErr);
             }
