@@ -5,7 +5,7 @@ import { exportAllSlides } from "@/lib/export-slides";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 300;
+export const maxDuration = 60;
 
 export async function POST(
   _request: Request,
