@@ -137,9 +137,16 @@ export function ChatPanel({
           buffer = lines.pop() ?? "";
 
           for (const line of lines) {
+            if (line.startsWith("event: error")) {
+              // Next line will have data with error details
+              continue;
+            }
             if (line.startsWith("data: ")) {
               try {
                 const data = JSON.parse(line.slice(6));
+                if (data.type === "error" || data.error) {
+                  throw new Error(data.error || "AI service error");
+                }
                 if (data.type === "token" && typeof data.text === "string") {
                   accumulated += data.text;
                   setMessages((prev) =>
@@ -159,11 +166,20 @@ export function ChatPanel({
                     )
                   );
                 }
-              } catch {
-                // skip unparseable
+              } catch (parseOrStreamErr) {
+                if (parseOrStreamErr instanceof Error && parseOrStreamErr.message.includes("LLM request failed")) {
+                  throw parseOrStreamErr;
+                }
+                // skip unparseable non-critical lines
               }
             }
           }
+        }
+
+        if (!accumulated.trim()) {
+          throw new Error(
+            "Tidak ada respon dari AI. Pastikan SUMOPOD_API_KEY sudah valid dan terisi di Environment Variables Vercel."
+          );
         }
       } catch (err) {
         if (err instanceof Error && err.name === "AbortError") return;

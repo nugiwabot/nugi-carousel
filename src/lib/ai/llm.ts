@@ -16,20 +16,21 @@ export interface LLMStreamEvent {
   error?: string;
 }
 
-const SUMOPOD_BASE_URL = "https://api.sumopod.com/v1";
+const SUMOPOD_BASE_URL =
+  process.env.SUMOPOD_BASE_URL || "https://ai.sumopod.com/v1";
 
 function getApiKey(): string {
   const key = process.env.SUMOPOD_API_KEY;
   if (!key) {
     throw new Error(
-      "SUMOPOD_API_KEY is not set. Add it to your .env.local file."
+      "SUMOPOD_API_KEY is not set. Add it to your .env.local or Vercel Environment Variables."
     );
   }
   return key;
 }
 
 function getModel(): string {
-  return process.env.SUMOPOD_MODEL || "deepseek-v4-pro";
+  return process.env.SUMOPOD_MODEL || "deepseek-chat";
 }
 
 /**
@@ -52,12 +53,11 @@ export function streamLLM(
       try {
         apiKey = getApiKey();
       } catch {
+        const errMsg =
+          "LLM request failed. Please check your SumoPod configuration. (SUMOPOD_API_KEY not set)";
         controller.enqueue(
           encoder.encode(
-            `event: error\ndata: ${JSON.stringify({
-              error:
-                "LLM request failed. Please check your SumoPod configuration. (SUMOPOD_API_KEY not set)",
-            })}\n\n`
+            `data: ${JSON.stringify({ type: "error", error: errMsg })}\n\n`
           )
         );
         controller.close();
@@ -86,11 +86,10 @@ export function streamLLM(
       } catch (err) {
         const message =
           err instanceof Error ? err.message : "Network error";
+        const errMsg = `LLM request failed. Please check your SumoPod configuration. (${message})`;
         controller.enqueue(
           encoder.encode(
-            `event: error\ndata: ${JSON.stringify({
-              error: `LLM request failed. Please check your SumoPod configuration. (${message})`,
-            })}\n\n`
+            `data: ${JSON.stringify({ type: "error", error: errMsg })}\n\n`
           )
         );
         controller.close();
@@ -108,11 +107,10 @@ export function streamLLM(
           status: response.status,
           body: errorBody.slice(0, 500),
         });
+        const errMsg = `LLM request failed. Please check your SumoPod configuration. (HTTP ${response.status}: ${errorBody.slice(0, 200)})`;
         controller.enqueue(
           encoder.encode(
-            `event: error\ndata: ${JSON.stringify({
-              error: `LLM request failed. Please check your SumoPod configuration. (HTTP ${response.status})`,
-            })}\n\n`
+            `data: ${JSON.stringify({ type: "error", error: errMsg })}\n\n`
           )
         );
         controller.close();

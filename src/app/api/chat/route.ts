@@ -35,6 +35,16 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid message" }, { status: 400 });
   }
 
+  if (!process.env.SUMOPOD_API_KEY) {
+    return NextResponse.json(
+      {
+        error:
+          "SUMOPOD_API_KEY belum diatur di Environment Variables. Buka Vercel Dashboard > Project Settings > Environment Variables, tambahkan SUMOPOD_API_KEY, lalu Redeploy.",
+      },
+      { status: 500 }
+    );
+  }
+
   // Build dynamic system prompt with current brand + carousel + style preset context
   const brand = await getBrand();
   const carousel = carouselId ? await getCarousel(carouselId) : null;

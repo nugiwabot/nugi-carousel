@@ -1,7 +1,13 @@
 import { NextResponse } from "next/server";
 
-// AI is always available via SumoPod API (no local CLI required).
-// This endpoint is kept for backwards compatibility.
 export async function GET() {
-  return NextResponse.json({ available: true });
+  const hasSumopod = !!process.env.SUMOPOD_API_KEY;
+  const hasRunpod = !!process.env.RUNPOD_API_KEY;
+
+  return NextResponse.json({
+    available: hasSumopod,
+    hasSumopod,
+    hasRunpod,
+    runpodEndpointId: process.env.RUNPOD_ENDPOINT_ID || "wcxqunpceum6cw",
+  });
 }
