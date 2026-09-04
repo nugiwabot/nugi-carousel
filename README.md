@@ -103,6 +103,16 @@ Buka [http://localhost:3000](http://localhost:3000) di browser Anda.
 
 ---
 
+## ⚡ Bulk Carousel Creation di Antigravity IDE
+
+Anda dapat membuat banyak carousel sekaligus secara masal langsung dari **Antigravity IDE**:
+- **Antigravity AI Engine**: Bertindak sebagai copywriter & visual designer langsung dari prompt percakapan (tanpa biaya token LLM luar).
+- **Automated RunPod SDXL**: Menghasilkan gambar background AI sinematik pada Slide 1 (Cover).
+- **Local Persistence**: Otomatis tersimpan ke database lokal `data/carousels.json` dan bisa langsung diedit/diekspor lewat Open Carrousel UI.
+- **Engine Script**: `scripts/bulk-generator.mjs`
+
+---
+
 ## 📄 License
 
 [MIT](./LICENSE)
